@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	_ "github.com/go-sql-driver/mysql"
@@ -170,12 +172,41 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(allowAllOriginsMiddleware())
-	
+
 	e.POST("/upload", upload)
 	e.GET("/assets/*", serveImage)
 	e.GET("/cerita", getCeritaAll)
 	err := e.Start(":1323")
 	if err != nil {
 		e.Logger.Fatal(err)
+	}
+}
+
+func AllowAllOriginsMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+    return func(c echo.Context) error {
+        c.Response().Header().Set(echo.HeaderAccessControlAllowOrigin, "*")
+        c.Response().Header().Set(echo.HeaderAccessControlAllowMethods, "GET, POST, PUT, DELETE, OPTIONS")
+        c.Response().Header().Set(echo.HeaderAccessControlAllowHeaders, "Content-Type, Authorization")
+
+        if c.Request().Method == echo.OPTIONS {
+            return c.NoContent(http.StatusNoContent)
+        }
+
+        return next(c)
+    }
+}
+func allowAllOriginsMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Response().Header().Set(echo.HeaderAccessControlAllowOrigin, "*")
+			c.Response().Header().Set(echo.HeaderAccessControlAllowMethods, "GET, POST, PUT, DELETE, OPTIONS")
+			c.Response().Header().Set(echo.HeaderAccessControlAllowHeaders, "Content-Type, Authorization")
+
+			if c.Request().Method == echo.OPTIONS {
+				return c.NoContent(http.StatusNoContent)
+			}
+
+			return next(c)
+		}
 	}
 }
