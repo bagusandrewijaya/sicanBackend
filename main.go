@@ -138,6 +138,62 @@ func upload(c echo.Context) error {
 	})
 }
 
+func getCeritaByPenulis(c echo.Context) error {
+    db, err := OpenDatabase()
+    if err != nil {
+        return err
+    }
+    defer db.Close()
+
+    IDPenulis := c.FormValue("penulis")
+
+    rows, err := db.Query("CALL select_cerita_by_penulis(?)", IDPenulis)
+    if err != nil {
+        return err
+    }
+    defer rows.Close()
+
+    data := []Cerita{}
+    for rows.Next() {
+        var cerita Cerita
+		var ceritaNullable sql.NullString
+        err := rows.Scan(&cerita.IdCerita, &cerita.Judul, &cerita.Video, &cerita.Gambar,&cerita.Ceritax, &ceritaNullable, &cerita.IdPenulis, &cerita.Likes)
+        if err != nil {
+            return err
+        }
+        if ceritaNullable.Valid {
+            cerita.Ceritax =""
+        } else {
+            cerita.Ceritax = ""
+        }
+       
+        data = append(data, cerita)
+    }
+
+    if err = rows.Err(); err != nil {
+        return err
+    }
+
+    if len(data) == 0 {
+        return c.JSON(http.StatusNotFound, map[string]interface{}{
+            "metadata": map[string]interface{}{
+                "code":   http.StatusNotFound,
+                "koneksi": "ok",
+            },
+            "response": "Data not found",
+        })
+    } else {
+        return c.JSON(http.StatusOK, map[string]interface{}{
+            "metadata": map[string]interface{}{
+                "code":   http.StatusOK,
+                "koneksi": "ok",
+            },
+            "response": data,
+        })
+    }
+}
+
+
 
 func getCeritaAll(c echo.Context) error {
     db, err := OpenDatabase()
@@ -190,7 +246,7 @@ func getCeritaAll(c echo.Context) error {
 
 
 func login(c echo.Context) error {
-	username := c.FormValue("username")
+		username := c.FormValue("username")
 	password := c.FormValue("password")
 
 	// Perform authentication logic by querying the database
@@ -449,14 +505,13 @@ func updateStatus(c echo.Context) error {
     idCerita := c.FormValue("id_cerita")
     status := c.FormValue("status")
 
-    // Retrieve existing data from the database
     db, err := OpenDatabase()
     if err != nil {
         return err
     }
     defer db.Close()
 
-    // Update status in the database
+
     _, err = db.Exec("UPDATE tbl_cerita SET status = ? WHERE id_cerita = ?", status, idCerita)
     if err != nil {
         return err
@@ -469,6 +524,147 @@ func updateStatus(c echo.Context) error {
         },
     })
 }
+func updateUser(c echo.Context) error {
+    db, err := OpenDatabase()
+    if err != nil {
+        return err
+    }
+    defer db.Close()
+
+    uuidParam := c.FormValue("uuid")
+    namaParam := c.FormValue("nama")
+    passwordParam := c.FormValue("password")
+    roleParam := c.FormValue("role")
+    alamatParam := c.FormValue("alamat")
+
+    // Check if there is a duplicate name
+    var duplicateCount int
+    err = db.QueryRow("call check_duplicate_name(?,?)", namaParam, uuidParam).Scan(&duplicateCount)
+    if err != nil {
+        return err
+    }
+
+    if duplicateCount > 0 {
+        // Return duplicate name error
+        return c.JSON(http.StatusConflict, map[string]interface{}{
+            "metadata": map[string]interface{}{
+                "code":    http.StatusConflict,
+                "koneksi": "ok",
+            },
+            "response": "Duplicate name",
+        })
+    }
+
+    // Perform the update if no duplicate name
+    _, err = db.Exec("UPDATE users SET nama = ?, password = ?, role = ?, alamat = ? WHERE uuid_users = ?",
+        namaParam, passwordParam, roleParam, alamatParam, uuidParam)
+    if err != nil {
+        return err
+    }
+
+    return c.JSON(http.StatusOK, map[string]interface{}{
+        "metadata": map[string]interface{}{
+            "code":    http.StatusOK,
+            "koneksi": "ok",
+        },
+        "response": "User updated successfully",
+    })
+}
+
+
+
+
+func tambahLikes(c echo.Context) error {
+    db, err := OpenDatabase()
+    if err != nil {
+        return err
+    }
+    defer db.Close()
+
+    idCerita := c.FormValue("idcerita")
+
+    _, err = db.Exec("CALL tambah_likes(?)", idCerita)
+    if err != nil {
+        return err
+    }
+
+    return c.JSON(http.StatusOK, map[string]interface{}{
+        "metadata": map[string]interface{}{
+            "code":    http.StatusOK,
+            "koneksi": "ok",
+        },
+        "response": "Likes added successfully",
+    })
+}
+
+
+func deleteCerita(c echo.Context) error {
+    db, err := OpenDatabase()
+    if err != nil {
+        return err
+    }
+    defer db.Close()
+
+    idCerita := c.Param("idcerita")
+
+    _, err = db.Query("CALL delete_cerita(?)", idCerita)
+    if err != nil {
+        return err
+    }
+
+    return c.JSON(http.StatusOK, map[string]interface{}{
+        "metadata": map[string]interface{}{
+            "code":   http.StatusOK,
+            "koneksi": "ok",
+        },
+        "response": "Cerita deleted successfully",
+    })
+}
+
+func getJumlahCeritaLikesByPenulis(c echo.Context) error {
+    db, err := OpenDatabase()
+    if err != nil {
+        return err
+    }
+    defer db.Close()
+
+    penulisID := c.FormValue("id_penulis")
+
+    rows, err := db.Query("CALL hitung_jumlah_cerita_likes_by_penulis(?)", penulisID)
+    if err != nil {
+        return err
+    }
+    defer rows.Close()
+
+    result := []map[string]interface{}{}
+    for rows.Next() {
+        var penulis string
+        var jumlahCerita, jumlahLikes int
+        err := rows.Scan(&penulis, &jumlahCerita, &jumlahLikes)
+        if err != nil {
+            return err
+        }
+        data := map[string]interface{}{
+            "fkg_penulis":   penulis,
+            "jumlah_cerita": jumlahCerita,
+            "jumlah_likes":  jumlahLikes,
+        }
+        result = append(result, data)
+    }
+    if err = rows.Err(); err != nil {
+        return err
+    }
+
+    return c.JSON(http.StatusOK, map[string]interface{}{
+        "metadata": map[string]interface{}{
+            "code":     http.StatusOK,
+            "koneksi":  "ok",
+        },
+        "response": result,
+    })
+}
+
+
 
 func serveImage(c echo.Context) error {
 	imagePath := strings.TrimPrefix(c.Request().URL.Path, "/assets/")
@@ -479,10 +675,18 @@ func serveImage(c echo.Context) error {
 func main() {
 	e := echo.New()
 
+	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	e.Use(allowAllOriginsMiddleware())
 
+	// Middleware CORS
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{echo.HeaderContentType, echo.HeaderAuthorization},
+	}))
+
+	// Routes
 	e.POST("/upload", upload)
 	e.POST("/login", login)
 	e.GET("/assets/*", serveImage)
@@ -490,24 +694,27 @@ func main() {
 	e.POST("/registrasi", register)
 	e.PUT("/editcerita", edit)
 	e.PUT("/updatestatus", updateStatus)
-	err := e.Start(":1500")
-	if err != nil {
-		e.Logger.Fatal(err)
-	}
+	e.POST("/ceritabypenulis", getCeritaByPenulis)
+	e.DELETE("/deletecerita/:idcerita", deleteCerita)
+	e.POST("/jumlahceritabypenulis", getJumlahCeritaLikesByPenulis)
+	e.POST("/addlikes", tambahLikes)
+	e.POST("/updateusers", updateUser)
+	
+	if err := e.Start(":1500"); err != nil {
+        e.Logger.Fatal(err)
+    }
 }
 
-func allowAllOriginsMiddleware() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			c.Response().Header().Set(echo.HeaderAccessControlAllowOrigin, "*")
-			c.Response().Header().Set(echo.HeaderAccessControlAllowMethods, "GET, POST, PUT, DELETE, OPTIONS")
-			c.Response().Header().Set(echo.HeaderAccessControlAllowHeaders, "Content-Type, Authorization")
+func allowAllOriginsMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		c.Response().Header().Set(echo.HeaderAccessControlAllowOrigin, "*")
+		c.Response().Header().Set(echo.HeaderAccessControlAllowMethods, "GET, POST, PUT, DELETE, OPTIONS")
+		c.Response().Header().Set(echo.HeaderAccessControlAllowHeaders, "Content-Type, Authorization")
 
-			if c.Request().Method == echo.OPTIONS {
-				return c.NoContent(http.StatusNoContent)
-			}
-
-			return next(c)
+		if c.Request().Method == echo.OPTIONS {
+			return c.NoContent(http.StatusNoContent)
 		}
+
+		return next(c)
 	}
 }
