@@ -22,6 +22,7 @@ type Cerita struct {
 	IdPenulis string `json:"fkg_penulis"`
 	Likes     string `json:"likes"`
 	IdCerita  string `json:"id_cerita"`
+	Status  string `json:"status"`
 }
 
 type AnakModel struct{
@@ -156,16 +157,11 @@ func getCeritaByPenulis(c echo.Context) error {
     data := []Cerita{}
     for rows.Next() {
         var cerita Cerita
-		var ceritaNullable sql.NullString
-        err := rows.Scan(&cerita.IdCerita, &cerita.Judul, &cerita.Video, &cerita.Gambar,&cerita.Ceritax, &ceritaNullable, &cerita.IdPenulis, &cerita.Likes)
+        err := rows.Scan(&cerita.IdCerita, &cerita.Judul, &cerita.Video, &cerita.Gambar,&cerita.Ceritax, &cerita.Status, &cerita.IdPenulis, &cerita.Likes)
         if err != nil {
             return err
         }
-        if ceritaNullable.Valid {
-            cerita.Ceritax =""
-        } else {
-            cerita.Ceritax = ""
-        }
+     
        
         data = append(data, cerita)
     }
@@ -193,7 +189,55 @@ func getCeritaByPenulis(c echo.Context) error {
     }
 }
 
+func getCeritaByID(c echo.Context) error {
+    db, err := OpenDatabase()
+    if err != nil {
+        return err
+    }
+    defer db.Close()
 
+    Idcerita := c.FormValue("idcerita")
+
+    rows, err := db.Query("CALL  select_cerita_detail(?)", Idcerita)
+    if err != nil {
+        return err
+    }
+    defer rows.Close()
+
+    data := []Cerita{}
+    for rows.Next() {
+        var cerita Cerita
+        err := rows.Scan(&cerita.IdCerita, &cerita.Judul, &cerita.Video, &cerita.Gambar,&cerita.Ceritax, &cerita.Status, &cerita.IdPenulis, &cerita.Likes)
+        if err != nil {
+            return err
+        }
+     
+       
+        data = append(data, cerita)
+    }
+
+    if err = rows.Err(); err != nil {
+        return err
+    }
+
+    if len(data) == 0 {
+        return c.JSON(http.StatusNotFound, map[string]interface{}{
+            "metadata": map[string]interface{}{
+                "code":   http.StatusNotFound,
+                "koneksi": "ok",
+            },
+            "response": "Data not found",
+        })
+    } else {
+        return c.JSON(http.StatusOK, map[string]interface{}{
+            "metadata": map[string]interface{}{
+                "code":   http.StatusOK,
+                "koneksi": "ok",
+            },
+            "response": data,
+        })
+    }
+}
 
 func getCeritaAll(c echo.Context) error {
     db, err := OpenDatabase()
@@ -209,16 +253,12 @@ func getCeritaAll(c echo.Context) error {
     data := []Cerita{}
     for rows.Next() {
         var cerita Cerita
-        var ceritaNullable sql.NullString
-        err := rows.Scan(&cerita.IdCerita, &cerita.Judul, &cerita.Video, &cerita.Gambar, &ceritaNullable, &cerita.IdPenulis, &cerita.Likes)
+    
+        err := rows.Scan(&cerita.IdCerita, &cerita.Judul, &cerita.Video, &cerita.Gambar, &cerita.Ceritax, &cerita.IdPenulis, &cerita.Likes)
         if err != nil {
             return err
         }
-        if ceritaNullable.Valid {
-            cerita.Ceritax =""
-        } else {
-            cerita.Ceritax = ""
-        }
+   
         data = append(data, cerita)
     }
     if err = rows.Err(); err != nil {
@@ -672,49 +712,44 @@ func serveImage(c echo.Context) error {
 	return c.File(imagePath)
 }
 
-func main() {
-	e := echo.New()
-
+	func main() {
+		e := echo.New()
 	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// Middleware CORS
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
-		AllowHeaders: []string{echo.HeaderContentType, echo.HeaderAuthorization},
-	}))
-
-	// Routes
-	e.POST("/upload", upload)
-	e.POST("/login", login)
-	e.GET("/assets/*", serveImage)
-	e.GET("/cerita", getCeritaAll)
-	e.POST("/registrasi", register)
-	e.PUT("/editcerita", edit)
-	e.PUT("/updatestatus", updateStatus)
-	e.POST("/ceritabypenulis", getCeritaByPenulis)
-	e.DELETE("/deletecerita/:idcerita", deleteCerita)
-	e.POST("/jumlahceritabypenulis", getJumlahCeritaLikesByPenulis)
-	e.POST("/addlikes", tambahLikes)
-	e.POST("/updateusers", updateUser)
-	
-	if err := e.Start(":1500"); err != nil {
-        e.Logger.Fatal(err)
-    }
-}
-
-func allowAllOriginsMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		c.Response().Header().Set(echo.HeaderAccessControlAllowOrigin, "*")
-		c.Response().Header().Set(echo.HeaderAccessControlAllowMethods, "GET, POST, PUT, DELETE, OPTIONS")
-		c.Response().Header().Set(echo.HeaderAccessControlAllowHeaders, "Content-Type, Authorization")
-
-		if c.Request().Method == echo.OPTIONS {
-			return c.NoContent(http.StatusNoContent)
+	e.Use(allowAllOriginsMiddleware())
+		// Routes
+		e.POST("/upload", upload)
+		e.POST("/login", login)
+		e.GET("/assets/*", serveImage)
+		e.GET("/cerita", getCeritaAll)
+		e.POST("/registrasi", register)
+		e.PUT("/editcerita", edit)
+		e.PUT("/updatestatus", updateStatus)
+		e.POST("/ceritabypenulis", getCeritaByPenulis)
+		e.DELETE("/deletecerita/:idcerita", deleteCerita)
+		e.POST("/jumlahceritabypenulis", getJumlahCeritaLikesByPenulis)
+		e.POST("/addlikes", tambahLikes)
+		e.POST("/updateusers", updateUser)
+		e.POST("/getCeritaByID", getCeritaByID)
+		
+		if err := e.Start(":1500"); err != nil {
+			e.Logger.Fatal(err)
 		}
-
-		return next(c)
 	}
-}
+	func allowAllOriginsMiddleware() echo.MiddlewareFunc {
+		return func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				c.Response().Header().Set(echo.HeaderAccessControlAllowOrigin, "*")
+				c.Response().Header().Set(echo.HeaderAccessControlAllowMethods, "GET, POST, PUT, DELETE, OPTIONS")
+				c.Response().Header().Set(echo.HeaderAccessControlAllowHeaders, "Content-Type, Authorization")
+	
+				if c.Request().Method == echo.OPTIONS {
+					return c.NoContent(http.StatusNoContent)
+				}
+	
+				return next(c)
+			}
+		}
+	}
